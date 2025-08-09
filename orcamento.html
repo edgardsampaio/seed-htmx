@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Orçamentos · App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <header class="border-b border-white/10 bg-slate-900/50 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="https://dummyimage.com/36x36/ffffff/000000.png&text=∎" class="h-9 w-9 rounded-lg" alt="Logo">
+        <div>
+          <h1 id="pageTitle" class="text-lg font-semibold">Orçamento</h1>
+          <p id="metaInfo" class="text-xs text-slate-400">—</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refreshBtn" class="px-3 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700">
+          Recarregar
+        </button>
+        <button id="logoutBtn" class="px-3 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500">
+          Sair
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6">
+    <!-- Filtro -->
+    <div class="mb-4 flex items-center gap-3">
+      <div class="relative grow">
+        <input id="searchInput" placeholder="Buscar por código, descrição ou versão..."
+               class="w-full rounded-xl bg-slate-900/60 border border-slate-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <span id="recCount" class="text-sm text-slate-400">0 itens</span>
+    </div>
+
+    <!-- Card Tabela -->
+    <div class="rounded-2xl overflow-hidden border border-white/10 bg-slate-900/40">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/60 text-slate-300">
+            <tr>
+              <th class="px-4 py-3 text-left">Código</th>
+              <th class="px-4 py-3 text-left">Descrição</th>
+              <th class="px-4 py-3 text-left">Versão</th>
+              <th class="px-4 py-3 text-left">Período</th>
+              <th class="px-4 py-3 text-left">Bloqueado</th>
+              <th class="px-4 py-3 text-left">ID</th>
+            </tr>
+          </thead>
+          <tbody id="tbody" class="divide-y divide-white/5">
+            <!-- linhas via JS -->
+          </tbody>
+        </table>
+      </div>
+      <div id="stateBox" class="p-6 text-center text-slate-300 hidden"></div>
+    </div>
+  </main>
+
+  <!-- Modal Itens -->
+  <div id="modal" class="fixed inset-0 hidden items-center justify-center z-50">
+    <div class="absolute inset-0 bg-black/60" id="modalBackdrop"></div>
+    <div class="relative w-[min(1000px,92vw)] max-h-[85vh] overflow-hidden rounded-2xl border border-white/10 bg-slate-900 shadow-2xl">
+      <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <h3 id="modalTitle" class="text-base font-semibold">Itens do Orçamento</h3>
+          <p id="modalSubtitle" class="text-xs text-slate-400">—</p>
+        </div>
+        <button id="modalClose" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700">Fechar</button>
+      </div>
+      <div id="modalBody" class="p-4">
+        <div id="modalState" class="text-center text-slate-300 py-8">Carregando…</div>
+        <div id="modalTableWrap" class="hidden overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead class="bg-slate-900/60 text-slate-300">
+              <tr>
+                <th class="px-3 py-2 text-left">Data Período</th>
+                <th class="px-3 py-2 text-left">Valor Orçado</th>
+                <th class="px-3 py-2 text-left">Conta Orçamentária</th>
+                <th class="px-3 py-2 text-left">Centro de Custo</th>
+                <th class="px-3 py-2 text-left">Bloqueado</th>
+                <th class="px-3 py-2 text-left">ID</th>
+              </tr>
+            </thead>
+            <tbody id="modalTbody" class="divide-y divide-white/5"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIG =====
+    const API_BASE  = "https://seed-szv3.onrender.com/api/v1";
+    const LOGIN_URL = "/login";
+    const TOKEN_KEY = "accessToken";
+
+    let fullData = [];
+
+    // utils
+    const el = (id)=>document.getElementById(id);
+    const fmtCount = (n)=>`${n} ${n===1?'item':'itens'}`;
+    const setState = (msg)=>{ const b=el('stateBox'); b.textContent=msg; b.classList.toggle('hidden', !msg); };
+    const setMeta = (t)=>{ el('metaInfo').textContent = t||'—'; };
+    const safe = (v)=> (v==null?'':String(v).replace(/[&<>"']/g, s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s])));
+    const brMoney = (n)=> new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n||0));
+    function tokenOrRedirect(){
+      const t = localStorage.getItem(TOKEN_KEY);
+      if(!t){ window.location.href = LOGIN_URL; return null; }
+      return t;
+    }
+    // Datas no formato: "2025-07-31 00:00:00 +0000 +0000"
+    function parseWeirdDate(s){
+      if(!s) return null;
+      const base = s.split(' +')[0].replace(' ', 'T') + 'Z'; // "YYYY-MM-DDTHH:MM:SSZ"
+      const d = new Date(base);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function fmtPeriodo(ini, fim){
+      const d1 = parseWeirdDate(ini), d2 = parseWeirdDate(fim);
+      if(!d1 || !d2) return '—';
+      const f = new Intl.DateTimeFormat('pt-BR',{dateStyle:'medium'});
+      return `${f.format(d1)} — ${f.format(d2)}`;
+    }
+
+    // fetch orçamentos
+    async function fetchOrcamentos(){
+      const token = tokenOrRedirect(); if(!token) return;
+      setState('Carregando…');
+      try{
+        const res = await fetch(`${API_BASE}/orcamento`, { headers: { Authorization:`Bearer ${token}` }});
+        if(res.status===401||res.status===403){ localStorage.removeItem(TOKEN_KEY); window.location.href=LOGIN_URL; return; }
+        if(!res.ok) throw new Error(`Erro ${res.status}`);
+        const json = await res.json();
+        el('pageTitle').textContent = json?.title ?? 'Orçamento';
+        fullData = Array.isArray(json?.data) ? json.data : [];
+        renderRows(fullData);
+
+        const meta = [];
+        if (json?.recCount != null) meta.push(`${json.recCount} registros`);
+        if (json?.hasNext != null)   meta.push(`hasNext: ${json.hasNext}`);
+        if (json?.pageSize != null)  meta.push(`pageSize: ${json.pageSize}`);
+        if (json?.timestamp)         meta.push(new Date(json.timestamp).toLocaleString());
+        setMeta(meta.join(' • '));
+
+        setState('');
+      }catch(e){
+        console.error(e);
+        setState('Falha ao carregar. Tente novamente.');
+      }
+    }
+
+    function renderRows(rows){
+      const tbody = el('tbody');
+      tbody.innerHTML = '';
+      if(!rows.length){
+        tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-6 text-center text-slate-400">Nenhum registro encontrado</td></tr>`;
+        el('recCount').textContent = fmtCount(0);
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      rows.forEach(x=>{
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40 cursor-pointer';
+        tr.setAttribute('data-id', x.id);
+        tr.innerHTML = `
+          <td class="px-4 py-2 font-medium">${safe(x.codigo)}</td>
+          <td class="px-4 py-2">${safe(x.descricao)}</td>
+          <td class="px-4 py-2">${safe(x.versao)}</td>
+          <td class="px-4 py-2">${fmtPeriodo(x.dataInicio, x.dataFim)}</td>
+          <td class="px-4 py-2">
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ${String(x.bloqueado).toLowerCase()==='true' ? 'bg-rose-500/10 text-rose-300 ring-rose-500/20' : 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'}">
+              ${String(x.bloqueado).toLowerCase()==='true' ? 'Sim' : 'Não'}
+            </span>
+          </td>
+          <td class="px-4 py-2"><code class="text-xs text-slate-300">${safe(x.id)}</code></td>
+        `;
+        tr.addEventListener('click', ()=> openItensModal(x));
+        frag.appendChild(tr);
+      });
+      tbody.appendChild(frag);
+      el('recCount').textContent = fmtCount(rows.length);
+    }
+
+    // busca local
+    el('searchInput').addEventListener('input', e=>{
+      const q = e.target.value.toLowerCase().trim();
+      if(!q){ renderRows(fullData); return; }
+      const filtered = fullData.filter(x =>
+        [x.codigo, x.descricao, x.versao].filter(Boolean)
+        .some(v=> String(v).toLowerCase().includes(q))
+      );
+      renderRows(filtered);
+    });
+
+    // modal itens
+    function openItensModal(orc){
+      el('modalTitle').textContent = `Itens do Orçamento — ${orc.codigo}`;
+      el('modalSubtitle').textContent = `${orc.descricao ?? ''} • Versão ${orc.versao ?? '-'} • ${fmtPeriodo(orc.dataInicio, orc.dataFim)}`;
+      el('modalState').textContent = 'Carregando…';
+      el('modalState').classList.remove('hidden');
+      el('modalTableWrap').classList.add('hidden');
+      el('modal').classList.remove('hidden');
+      fetchItens(orc.id);
+    }
+    function closeModal(){ el('modal').classList.add('hidden'); }
+    el('modalBackdrop').addEventListener('click', closeModal);
+    el('modalClose').addEventListener('click', closeModal);
+
+    async function fetchItens(orcId){
+      const token = tokenOrRedirect(); if(!token) return;
+      try{
+        const res = await fetch(`${API_BASE}/orcamento/itens/${encodeURIComponent(orcId)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if(res.status===401||res.status===403){ localStorage.removeItem(TOKEN_KEY); window.location.href=LOGIN_URL; return; }
+        if(!res.ok) throw new Error(`Erro ${res.status}`);
+        const arr = await res.json(); // espera array
+        renderItens(Array.isArray(arr)?arr:[]);
+        el('modalState').classList.add('hidden');
+        el('modalTableWrap').classList.remove('hidden');
+      }catch(e){
+        console.error(e);
+        el('modalState').textContent = 'Falha ao carregar itens.';
+      }
+    }
+
+    function renderItens(items){
+      const tbody = el('modalTbody');
+      tbody.innerHTML = '';
+      if(!items.length){
+        tbody.innerHTML = `<tr><td colspan="6" class="px-3 py-6 text-center text-slate-400">Sem itens</td></tr>`;
+        return;
+      }
+      const frag = document.createDocumentFragment();
+      items.forEach(it=>{
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40';
+        const bloqueado = !!it.bloqueado;
+        tr.innerHTML = `
+          <td class="px-3 py-2">${parseWeirdDate(it.dataPeriodo)?.toLocaleDateString('pt-BR') ?? '—'}</td>
+          <td class="px-3 py-2 font-medium">${brMoney(it.valorOrcado)}</td>
+          <td class="px-3 py-2"><code class="text-xs">${safe(it.idContaOrcamentaria ?? '—')}</code></td>
+          <td class="px-3 py-2"><code class="text-xs">${safe(it.idCentroDeCusto ?? '—')}</code></td>
+          <td class="px-3 py-2">
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ${bloqueado ? 'bg-rose-500/10 text-rose-300 ring-rose-500/20' : 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'}">
+              ${bloqueado ? 'Sim' : 'Não'}
+            </span>
+          </td>
+          <td class="px-3 py-2"><code class="text-xs text-slate-300">${safe(it.id)}</code></td>
+        `;
+        frag.appendChild(tr);
+      });
+      tbody.appendChild(frag);
+    }
+
+    // ações gerais
+    el('refreshBtn').addEventListener('click', fetchOrcamentos);
+    el('logoutBtn').addEventListener('click', ()=>{
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = LOGIN_URL;
+    });
+
+    // init
+    fetchOrcamentos();
+  </script>
+</body>
+</html>

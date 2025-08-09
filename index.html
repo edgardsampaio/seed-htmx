@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login · Sua Empresa</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1" defer></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Fallback suave para quem bloquear Tailwind (opcional) */
+    body { background: #0f172a; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="grid lg:grid-cols-2 min-h-screen">
+    <!-- Coluna Esquerda: Form -->
+    <div class="flex items-center justify-center p-6 lg:p-12">
+      <div class="w-full max-w-md">
+        <!-- Logo -->
+        <div class="flex items-center gap-3 mb-8">
+          <img src="https://dummyimage.com/48x48/ffffff/000000.png&text=∎" alt="Logo" class="h-12 w-12 rounded-xl shadow" />
+          <div>
+            <h1 class="text-xl font-semibold tracking-tight">Sua Empresa</h1>
+            <p class="text-slate-400 text-sm">Acesso ao painel</p>
+          </div>
+        </div>
+
+        <!-- Card -->
+        <div class="bg-slate-900/60 backdrop-blur rounded-2xl p-6 shadow-xl ring-1 ring-white/10">
+          <h2 class="text-lg font-medium mb-1">Entrar</h2>
+          <p class="text-slate-400 text-sm mb-6">Use seu usuário e senha para continuar.</p>
+
+          <!-- Alerta de erro -->
+          <div id="errorBox" class="hidden rounded-lg border border-red-500/20 bg-red-500/10 text-red-200 text-sm px-3 py-2 mb-4"></div>
+
+          <form id="loginForm" class="space-y-4" hx-boost="true">
+            <div>
+              <label for="username" class="block text-sm mb-1">Usuário</label>
+              <input id="username" name="username" type="text" required
+                     class="w-full rounded-xl bg-slate-800/70 border border-slate-700/60 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <div>
+              <label for="password" class="block text-sm mb-1">Senha</label>
+              <input id="password" name="password" type="password" required
+                     class="w-full rounded-xl bg-slate-800/70 border border-slate-700/60 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+
+            <button id="submitBtn" type="submit"
+                    class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-4 py-3 font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+              <svg id="spinner" class="hidden animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                <path class="opacity-90" d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+              </svg>
+              <span id="btnText">Entrar</span>
+            </button>
+          </form>
+
+          <p class="text-xs text-slate-500 mt-4">Dica: se você controlar a API, prefira cookies <em>HttpOnly</em> para tokens em produção.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coluna Direita: Banner -->
+    <div class="relative hidden lg:block">
+      <img src="https://images.unsplash.com/photo-1556157382-97eda2d62296?q=80&w=1920&auto=format&fit=crop"
+           alt="Banner" class="absolute inset-0 h-full w-full object-cover" />
+      <div class="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent"></div>
+      <div class="absolute bottom-10 left-10 right-10">
+        <h3 class="text-2xl font-semibold">Bem-vindo ao Painel</h3>
+        <p class="text-slate-300 mt-2 max-w-xl">Gestão simples, performance alta e decisões com dados.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIGURE AQUI =====
+    const API_BASE = "https://seed-szv3.onrender.com/api/v1";         // ex.: "https://api.suaempresa.com"
+    const MAIN_PAGE_URL = "/app.html";          // ex.: "/dashboard" ou rota da sua Main Page
+    const TOKEN_KEY = "accessToken";
+
+    async function validateToken(token) {
+      if (!token) return false;
+      return true;
+      try {
+        const res = await fetch(`${API_BASE}/me`, {
+          method: "GET",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    function setLoading(loading) {
+      const btn = document.getElementById("submitBtn");
+      const spn = document.getElementById("spinner");
+      const txt = document.getElementById("btnText");
+      btn.disabled = loading;
+      spn.classList.toggle("hidden", !loading);
+      txt.textContent = loading ? "Entrando..." : "Entrar";
+    }
+
+    function showError(msg) {
+      const box = document.getElementById("errorBox");
+      box.textContent = msg;
+      box.classList.remove("hidden");
+    }
+    function clearError() {
+      document.getElementById("errorBox").classList.add("hidden");
+    }
+
+    // Checa token já salvo e redireciona se válido
+    (async () => {
+      const existing = localStorage.getItem(TOKEN_KEY);
+      if (await validateToken(existing)) {
+        window.location.href = MAIN_PAGE_URL;
+      }
+    })();
+
+    // Submit do login (POST JSON, salva token, valida e redireciona)
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+      setLoading(true);
+
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      try {
+        const res = await fetch(`${API_BASE}/signin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (!res.ok) {
+          const err = await safeJson(res);
+          throw new Error(err?.message || "Falha ao autenticar.");
+        }
+
+        const data = await res.json();
+        const token = data?.accessToken;
+        if (!token) throw new Error("Resposta sem accessToken.");
+
+        localStorage.setItem(TOKEN_KEY, token);
+
+        if (await validateToken(token)) {
+          window.location.href = MAIN_PAGE_URL;
+        } else {
+          localStorage.removeItem(TOKEN_KEY);
+          throw new Error("Token inválido ou expirado.");
+        }
+      } catch (err) {
+        showError(err.message || "Erro inesperado. Tente novamente.");
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    async function safeJson(res) {
+      try { return await res.json(); } catch { return null; }
+    }
+  </script>
+</body>
+</html>

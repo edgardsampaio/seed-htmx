@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Gestão Orçamentária</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+  <!-- Header -->
+  <header class="border-b border-white/10 bg-slate-900/50 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="https://dummyimage.com/36x36/ffffff/000000.png&text=∎" class="h-9 w-9 rounded-lg" alt="Logo">
+        <h1 class="text-lg font-semibold">Gestão Orçamentária</h1>
+      </div>
+      <button id="logoutBtn" class="px-3 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500">
+        Sair
+      </button>
+    </div>
+  </header>
+
+  <!-- Conteúdo -->
+  <main class="flex-grow flex items-center justify-center px-4 py-10">
+    <div class="grid gap-8 md:grid-cols-2 max-w-4xl w-full">
+      
+      <!-- Card Contas Orçamentárias -->
+      <a href="/contaorcamentaria.html"
+         class="group block rounded-2xl border border-white/10 bg-slate-900/40 hover:bg-slate-800/50 transition overflow-hidden shadow-lg">
+        <div class="p-8 flex flex-col items-center text-center">
+          <div class="mb-4 rounded-full bg-indigo-500/10 p-4 group-hover:bg-indigo-500/20 transition">
+            📊
+          </div>
+          <h2 class="text-xl font-semibold mb-2">Contas Orçamentárias</h2>
+          <p class="text-slate-400 text-sm">Gerencie e visualize todas as contas orçamentárias cadastradas.</p>
+        </div>
+      </a>
+
+      <!-- Card Orçamentos -->
+      <a href="/orcamento.html"
+         class="group block rounded-2xl border border-white/10 bg-slate-900/40 hover:bg-slate-800/50 transition overflow-hidden shadow-lg">
+        <div class="p-8 flex flex-col items-center text-center">
+          <div class="mb-4 rounded-full bg-emerald-500/10 p-4 group-hover:bg-emerald-500/20 transition">
+            💰
+          </div>
+          <h2 class="text-xl font-semibold mb-2">Orçamentos</h2>
+          <p class="text-slate-400 text-sm">Acesse a lista de orçamentos e seus respectivos itens.</p>
+        </div>
+      </a>
+
+    </div>
+  </main>
+
+  <script>
+    const LOGIN_URL = "/login";
+    const TOKEN_KEY = "accessToken";
+
+    function tokenOrRedirect(){
+      const t = localStorage.getItem(TOKEN_KEY);
+      if(!t){ window.location.href = LOGIN_URL; }
+    }
+    tokenOrRedirect();
+
+    document.getElementById("logoutBtn").addEventListener("click", ()=>{
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = LOGIN_URL;
+    });
+  </script>
+</body>
+</html>

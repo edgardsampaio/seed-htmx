@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Conta Orçamentária · App</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <header class="border-b border-white/10 bg-slate-900/50 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <img src="https://dummyimage.com/36x36/ffffff/000000.png&text=∎" class="h-9 w-9 rounded-lg" alt="Logo">
+        <div>
+          <h1 id="pageTitle" class="text-lg font-semibold">Conta Orçamentária</h1>
+          <p id="metaInfo" class="text-xs text-slate-400">—</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="refreshBtn" class="px-3 py-2 text-sm rounded-lg bg-slate-800 hover:bg-slate-700">
+          Recarregar
+        </button>
+        <button id="logoutBtn" class="px-3 py-2 text-sm rounded-lg bg-rose-600 hover:bg-rose-500">
+          Sair
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6">
+    <!-- Filtro -->
+    <div class="mb-4 flex items-center gap-3">
+      <div class="relative grow">
+        <input id="searchInput" placeholder="Buscar por código, descrição, tipo ou condição..."
+               class="w-full rounded-xl bg-slate-900/60 border border-slate-800 px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+      <span id="recCount" class="text-sm text-slate-400">0 itens</span>
+    </div>
+
+    <!-- Card Tabela -->
+    <div class="rounded-2xl overflow-hidden border border-white/10 bg-slate-900/40">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/60 text-slate-300">
+            <tr>
+              <th class="px-4 py-3 text-left">Código</th>
+              <th class="px-4 py-3 text-left">Descrição</th>
+              <th class="px-4 py-3 text-left">Tipo</th>
+              <th class="px-4 py-3 text-left">Natureza</th>
+              <th class="px-4 py-3 text-left">Condição</th>
+              <th class="px-4 py-3 text-left">Bloqueado</th>
+              <th class="px-4 py-3 text-left">Conta Pai</th>
+              <th class="px-4 py-3 text-left">ID</th>
+            </tr>
+          </thead>
+          <tbody id="tbody" class="divide-y divide-white/5">
+            <!-- linhas renderizadas via JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Loading / Erro -->
+      <div id="stateBox" class="p-6 text-center text-slate-300 hidden"></div>
+    </div>
+  </main>
+
+  <script>
+    // ===== CONFIG =====
+    const API_BASE = "https://seed-szv3.onrender.com/api/v1"; 
+    const LOGIN_URL  = "/login";      // sua rota de login
+    const TOKEN_KEY  = "accessToken";
+
+    let fullData = []; // manter cópia completa para filtro
+
+    // utils
+    function fmtCount(n){ return `${n} ${n===1?'item':'itens'}`; }
+    function el(id){ return document.getElementById(id); }
+    function setState(msg){ const b=el('stateBox'); b.textContent=msg; b.classList.toggle('hidden', !msg); }
+    function setMeta(info){ el('metaInfo').textContent = info || '—'; }
+    function tokenOrRedirect() {
+      const t = localStorage.getItem(TOKEN_KEY);
+      if(!t){ window.location.href = LOGIN_URL; return null; }
+      return t;
+    }
+
+    async function fetchContas() {
+      const token = tokenOrRedirect(); if(!token) return;
+      setState('Carregando...');
+      try {
+        const res = await fetch(`${API_BASE}/contaorcamentaria`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.status === 401 || res.status === 403) {
+          // token inválido/expirado
+          localStorage.removeItem(TOKEN_KEY);
+          window.location.href = LOGIN_URL;
+          return;
+        }
+        if (!res.ok) throw new Error(`Erro ${res.status}`);
+
+        const json = await res.json();
+        // json esperado:
+        // { title, data: [...], timestamp, hasNext, pageSize, recCount }
+        const title = json?.title ?? 'Conta Orçamentária';
+        el('pageTitle').textContent = title;
+
+        fullData = Array.isArray(json?.data) ? json.data : [];
+        renderRows(fullData);
+
+        const meta = [];
+        if (json?.recCount != null) meta.push(`${json.recCount} registros`);
+        if (json?.hasNext != null)   meta.push(`hasNext: ${json.hasNext}`);
+        if (json?.pageSize != null)  meta.push(`pageSize: ${json.pageSize}`);
+        if (json?.timestamp)         meta.push(new Date(json.timestamp).toLocaleString());
+        setMeta(meta.join(' • '));
+
+        setState(''); // clear
+      } catch (e) {
+        setState('Falha ao carregar. Tente novamente.');
+        console.error(e);
+      }
+    }
+
+    function renderRows(rows){
+      const tbody = el('tbody');
+      tbody.innerHTML = '';
+      if (!rows.length){
+        tbody.innerHTML = `<tr><td colspan="8" class="px-4 py-6 text-center text-slate-400">Nenhum registro encontrado</td></tr>`;
+      } else {
+        const frag = document.createDocumentFragment();
+        rows.forEach(item => {
+          const tr = document.createElement('tr');
+          tr.className = 'hover:bg-slate-800/40';
+          tr.innerHTML = `
+            <td class="px-4 py-2 font-medium">${safe(item.codigo)}</td>
+            <td class="px-4 py-2">${safe(item.descricao)}</td>
+            <td class="px-4 py-2">${safe(item.tipo)}</td>
+            <td class="px-4 py-2">${safe(item.codigoNatureza)}</td>
+            <td class="px-4 py-2">${safe(item.condicao)}</td>
+            <td class="px-4 py-2">
+              <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ring-1 ${item.bloqueado==='Sim' ? 'bg-rose-500/10 text-rose-300 ring-rose-500/20' : 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'}">
+                ${safe(item.bloqueado ?? 'Não')}
+              </span>
+            </td>
+            <td class="px-4 py-2">${item.codigoContaPai ?? '—'}</td>
+            <td class="px-4 py-2">
+              <code class="text-xs text-slate-300">${safe(item.id)}</code>
+            </td>
+          `;
+          frag.appendChild(tr);
+        });
+        tbody.appendChild(frag);
+      }
+      el('recCount').textContent = fmtCount(rows.length);
+    }
+
+    // busca client-side
+    el('searchInput').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      if (!q) { renderRows(fullData); return; }
+      const filtered = fullData.filter(x => {
+        return [x.codigo, x.descricao, x.tipo, x.condicao]
+          .filter(Boolean)
+          .some(v => String(v).toLowerCase().includes(q));
+      });
+      renderRows(filtered);
+    });
+
+    // ações
+    el('refreshBtn').addEventListener('click', fetchContas);
+    el('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem(TOKEN_KEY);
+      window.location.href = LOGIN_URL;
+    });
+
+    // helpers
+    function safe(v){ return (v===null||v===undefined)?'':String(v).replace(/[&<>"']/g,s=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[s])); }
+
+    // init
+    fetchContas();
+  </script>
+</body>
+</html>
